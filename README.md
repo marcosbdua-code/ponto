@@ -1,0 +1,218 @@
+import React, { useState, useEffect } from "react";
+import { Pencil, Edit } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+
+function Sidebar({ expanded, toggleSidebar, onExportPDF, setView, modoAdmin, onLogout }) {
+  if (!modoAdmin) return null;
+  return (
+    <aside className={`fixed top-0 left-0 h-full ${expanded ? 'w-48' : 'w-12'} bg-white border-r shadow-lg z-10 p-2 flex flex-col transition-all duration-300`}>
+      <button onClick={toggleSidebar} className="mb-4 text-sm text-gray-600 hover:text-black">
+        <span className="text-lg">{expanded ? '←' : '→'}</span>
+      </button>
+      {expanded && (
+        <>
+          <h2 className="text-lg font-semibold mb-6">Menu</h2>
+          <button className="text-left px-3 py-2 hover:bg-gray-200 rounded" onClick={() => setView('dashboard')}>Dashboard</button>
+          <button className="text-left px-3 py-2 hover:bg-gray-200 rounded" onClick={() => setView('registro')}>Registro</button>
+          <button className="text-left px-3 py-2 hover:bg-gray-200 rounded" onClick={() => setView('relatorios')}>Relatórios</button>
+          <button className="text-left px-3 py-2 hover:bg-gray-200 rounded" onClick={() => setView('configuracoes')}>Configurações</button>
+          <button onClick={onExportPDF} className="text-left px-3 py-2 mt-4 bg-blue-500 text-white rounded hover:bg-blue-600">
+            Exportar PDF
+          </button>
+          <button onClick={onLogout} className="text-left px-3 py-2 mt-2 bg-red-500 text-white rounded hover:bg-red-600">
+            Sair
+          </button>
+        </>
+      )}
+    </aside>
+  );
+}
+
+function AppResumoHoras() {
+  const [modoAdmin, setModoAdmin] = useState(false);
+  const [autenticado, setAutenticado] = useState(false);
+  const [usuario, setUsuario] = useState("");
+  const [senha, setSenha] = useState("");
+  const [nome, setNome] = useState(() => localStorage.getItem("nomeUsuario") || "");
+  const [historico, setHistorico] = useState(() => {
+    const salvo = localStorage.getItem("historicoPonto");
+    return salvo ? JSON.parse(salvo) : [];
+  });
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [view, setView] = useState("dashboard");
+  const [itemEditando, setItemEditando] = useState(null);
+  const [novoHorario, setNovoHorario] = useState("");
+
+  const toggleSidebar = () => setSidebarExpanded(!sidebarExpanded);
+
+  const usuarios = [
+    { nome: "admin", senha: "admin123", role: "admin" },
+    { nome: "joao", senha: "1234", role: "colaborador" },
+    { nome: "maria", senha: "abcd", role: "colaborador" },
+    { nome: "jaque", senha: "jaque", role: "colaborador" },
+  ];
+
+  const autenticar = () => {
+    const user = usuarios.find(
+      (u) => u.nome.toLowerCase() === usuario.trim().toLowerCase() && u.senha === senha
+    );
+    if (user) {
+      setModoAdmin(user.role === "admin");
+      setAutenticado(true);
+      setNome(user.nome);
+      localStorage.setItem("nomeUsuario", user.nome);
+      setView("registro");
+    } else {
+      alert("Usuário ou senha inválidos");
+    }
+  };
+
+  const logout = () => {
+    setAutenticado(false);
+    setModoAdmin(false);
+    setUsuario("");
+    setSenha("");
+    setNome("");
+    localStorage.removeItem("nomeUsuario");
+    setView("dashboard");
+  };
+
+  const limparRelatorioPor = (tipo) => {
+    const agora = new Date();
+    const atualizado = historico.filter((item) => {
+      const data = new Date(item.timestamp);
+      const mesmoDia = data.toLocaleDateString() === agora.toLocaleDateString();
+      const mesmoMes = data.getMonth() === agora.getMonth() && data.getFullYear() === agora.getFullYear();
+      if (tipo === "dia") {
+        return !mesmoDia;
+      } else if (tipo === "mes") {
+        return !mesmoMes;
+      }
+      return true;
+    });
+    setHistorico(atualizado);
+    localStorage.setItem("historicoPonto", JSON.stringify(atualizado));
+  };
+
+  const editarHorario = (index) => {
+    if (!novoHorario || isNaN(new Date(novoHorario).getTime())) {
+      alert("Por favor, insira um horário válido.");
+      return;
+    }
+    const novoTimestamp = new Date(novoHorario).toISOString();
+    const atualizado = [...historico];
+    atualizado[index].timestamp = novoTimestamp;
+    setHistorico(atualizado);
+    localStorage.setItem("historicoPonto", JSON.stringify(atualizado));
+    setItemEditando(null);
+    setNovoHorario("");
+  };
+
+  const excluirItem = (index) => {
+    if (!window.confirm("Deseja realmente excluir este item?")) return;
+    const atualizado = historico.filter((_, i) => i !== index);
+    setHistorico(atualizado);
+    localStorage.setItem("historicoPonto", JSON.stringify(atualizado));
+  };
+
+  const exportarPDF = async () => {
+    const elemento = document.getElementById("resumo-horas");
+    if (!elemento) return;
+    const canvas = await html2canvas(elemento);
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF();
+    pdf.addImage(imgData, "PNG", 10, 10, 190, 0);
+    pdf.save("resumo-horas.pdf");
+  };
+
+  const renderView = () => {
+    if (view === "registro" || view === "relatorios") {
+      return (
+        <div id="resumo-horas" className="w-full max-w-xl bg-white p-2 rounded shadow mt-4">
+          <h2 className="text-lg font-bold mb-2">Resumo de Horas</h2>
+          {view === 'registro' && (
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => limparRelatorioPor("dia")} className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600">Limpar do Dia</button>
+              <button onClick={() => limparRelatorioPor("mes")} className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600">Limpar do Mês</button>
+            </div>
+          )}
+          <ul className="text-sm">
+            {historico.length > 0 ? historico.map((item, index) => {
+              const data = new Date(item.timestamp);
+              const diaSemana = data.toLocaleDateString(undefined, { weekday: 'long' });
+              const mesExtenso = data.toLocaleDateString(undefined, { month: 'long' });
+              const diaMes = data.getDate();
+              const ano = data.getFullYear();
+              return (
+                <li key={index} className="flex flex-col mb-1">
+                  <span>{item.nome} - {item.tipo}</span>
+                  <span>{diaSemana}, {diaMes} de {mesExtenso} de {ano} - {data.toLocaleTimeString()}</span>
+                  {modoAdmin && view === 'registro' && (
+                    <div className="flex items-center gap-2 mt-1">
+                      {itemEditando === index ? (
+                        <>
+                          <input type="datetime-local" value={novoHorario} onChange={(e) => setNovoHorario(e.target.value)} className="border p-1 text-xs" />
+                          <button onClick={() => editarHorario(index)} className="text-green-600 text-xs">Salvar</button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              setItemEditando(index);
+                              const localDate = new Date(item.timestamp).toISOString().slice(0, 16);
+                              setNovoHorario(localDate);
+                            }}
+                            className="text-blue-600 text-xs"
+                          >Editar</button>
+                          <button onClick={() => excluirItem(index)} className="text-red-600 text-xs">Excluir</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            }) : <p className="text-gray-500">Nenhum registro encontrado.</p>}
+          </ul>
+        </div>
+      );
+    }
+    return (
+      <div className="w-full max-w-md text-center bg-white p-4 rounded shadow">
+        <h2 className="text-xl font-semibold mb-2">Painel do Administrador</h2>
+        <p className="text-gray-600">Escolha uma opção no menu lateral para começar.</p>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex">
+      <Sidebar expanded={sidebarExpanded} toggleSidebar={toggleSidebar} onExportPDF={exportarPDF} setView={setView} modoAdmin={modoAdmin} onLogout={logout} />
+      <div className="flex-1 min-h-screen bg-gray-100 pt-24 p-6 flex flex-col items-center relative ml-12">
+        <h1 className="text-2xl font-bold mb-4">Registro de Ponto</h1>
+        {!autenticado ? (
+          <div className="bg-white p-4 rounded shadow max-w-sm w-full">
+            <input
+              placeholder="Usuário"
+              value={usuario}
+              onChange={(e) => setUsuario(e.target.value)}
+              className="w-full border p-2 mb-2 rounded"
+            />
+            <input
+              placeholder="Senha"
+              type="password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              className="w-full border p-2 mb-2 rounded"
+            />
+            <button onClick={autenticar} className="w-full bg-blue-600 text-white py-2 rounded">
+              Entrar
+            </button>
+          </div>
+        ) : renderView()}
+      </div>
+    </div>
+  );
+}
+
+export default AppResumoHoras;
